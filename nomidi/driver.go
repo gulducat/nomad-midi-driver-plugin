@@ -1,13 +1,11 @@
-package hello
+package nomidi
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"github.com/hashicorp/consul-template/signals"
@@ -24,7 +22,7 @@ const (
 	// pluginName is the name of the plugin
 	// this is used for logging and (along with the version) for uniquely
 	// identifying plugin binaries fingerprinted by the client
-	pluginName = "hello-world-example"
+	pluginName = "midi-portmidi"
 
 	// pluginVersion allows the client to identify and use newer versions of
 	// an installed plugin
@@ -42,6 +40,11 @@ const (
 )
 
 var (
+	// binPath is the full path to the binary that nomad runs
+	binPath = os.Args[0]
+
+	pluginDir = filepath.Dir(binPath) // laaazy
+
 	// pluginInfo describes the plugin
 	pluginInfo = &base.PluginInfoResponse{
 		Type:              base.PluginTypeDriver,
@@ -68,10 +71,10 @@ var (
 		//       shell = "fish"
 		//     }
 		//   }
-		"shell": hclspec.NewDefault(
-			hclspec.NewAttr("shell", "string", false),
-			hclspec.NewLiteral(`"bash"`),
-		),
+		//"lock_file": hclspec.NewDefault(
+		//	hclspec.NewAttr("lock_file", "string", false),
+		//	hclspec.NewLiteral(`"midi.lock"`),
+		//),
 	})
 
 	// taskConfigSpec is the specification of the plugin's configuration for
@@ -96,10 +99,12 @@ var (
 		//       }
 		//     }
 		//   }
-		"greeting": hclspec.NewDefault(
-			hclspec.NewAttr("greeting", "string", false),
-			hclspec.NewLiteral(`"Hello, World!"`),
-		),
+		//"greeting": hclspec.NewDefault(
+		//	hclspec.NewAttr("greeting", "string", false),
+		//	hclspec.NewLiteral(`"Hello, World!"`),
+		//),
+		"midi_file": hclspec.NewAttr("midi_file", "string", true),
+		"port_name": hclspec.NewAttr("port_name", "string", true),
 	})
 
 	// capabilities indicates what optional features this driver supports
@@ -122,7 +127,8 @@ type Config struct {
 	// This struct is the decoded version of the schema defined in the
 	// configSpec variable above. It's used to convert the HCL configuration
 	// passed by the Nomad agent into Go contructs.
-	Shell string `codec:"shell"`
+	//Shell    string `codec:"shell"`
+	//LockFile string `codec:"lock_file"`
 }
 
 // TaskConfig contains configuration information for a task that runs with
@@ -133,7 +139,9 @@ type TaskConfig struct {
 	// This struct is the decoded version of the schema defined in the
 	// taskConfigSpec variable above. It's used to convert the string
 	// configuration for the task into Go contructs.
-	Greeting string `codec:"greeting"`
+	//Greeting string `codec:"greeting"`
+	MidiFile string `codec:"midi_file"`
+	PortName string `codec:"port_name"`
 }
 
 // TaskState is the runtime state which is encoded in the handle returned to
@@ -156,9 +164,8 @@ type TaskState struct {
 	Pid int
 }
 
-// HelloDriverPlugin is an example driver plugin. When provisioned in a job,
-// the taks will output a greet specified by the user.
-type HelloDriverPlugin struct {
+// MIDIDriverPlugin tasks will play a midi file through a midi port.
+type MIDIDriverPlugin struct {
 	// eventer is used to handle multiplexing of TaskEvents calls such that an
 	// event can be broadcast to all callers
 	eventer *eventer.Eventer
@@ -189,7 +196,7 @@ func NewPlugin(logger hclog.Logger) drivers.DriverPlugin {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger = logger.Named(pluginName)
 
-	return &HelloDriverPlugin{
+	return &MIDIDriverPlugin{
 		eventer:        eventer.NewEventer(ctx, logger),
 		config:         &Config{},
 		tasks:          newTaskStore(),
@@ -200,23 +207,25 @@ func NewPlugin(logger hclog.Logger) drivers.DriverPlugin {
 }
 
 // PluginInfo returns information describing the plugin.
-func (d *HelloDriverPlugin) PluginInfo() (*base.PluginInfoResponse, error) {
+func (d *MIDIDriverPlugin) PluginInfo() (*base.PluginInfoResponse, error) {
 	return pluginInfo, nil
 }
 
 // ConfigSchema returns the plugin configuration schema.
-func (d *HelloDriverPlugin) ConfigSchema() (*hclspec.Spec, error) {
+func (d *MIDIDriverPlugin) ConfigSchema() (*hclspec.Spec, error) {
 	return configSpec, nil
 }
 
 // SetConfig is called by the client to pass the configuration for the plugin.
-func (d *HelloDriverPlugin) SetConfig(cfg *base.Config) error {
+func (d *MIDIDriverPlugin) SetConfig(cfg *base.Config) error {
 	var config Config
 	if len(cfg.PluginConfig) != 0 {
 		if err := base.MsgPackDecode(cfg.PluginConfig, &config); err != nil {
 			return err
 		}
 	}
+
+	//d.logger.Error("HEY SUCKA", "args", strings.Join(os.Args, " "))
 
 	// Save the configuration to the plugin
 	d.config = &config
@@ -230,10 +239,10 @@ func (d *HelloDriverPlugin) SetConfig(cfg *base.Config) error {
 	//
 	// In the example below we check if the shell specified by the user is
 	// supported by the plugin.
-	shell := d.config.Shell
-	if shell != "bash" && shell != "fish" {
-		return fmt.Errorf("invalid shell %s", d.config.Shell)
-	}
+	//shell := d.config.LockFile
+	//if shell != "bash" && shell != "fish" {
+	//	return fmt.Errorf("invalid shell %s", d.config.LockFile)
+	//}
 
 	// Save the Nomad agent configuration
 	if cfg.AgentConfig != nil {
@@ -249,25 +258,25 @@ func (d *HelloDriverPlugin) SetConfig(cfg *base.Config) error {
 }
 
 // TaskConfigSchema returns the HCL schema for the configuration of a task.
-func (d *HelloDriverPlugin) TaskConfigSchema() (*hclspec.Spec, error) {
+func (d *MIDIDriverPlugin) TaskConfigSchema() (*hclspec.Spec, error) {
 	return taskConfigSpec, nil
 }
 
 // Capabilities returns the features supported by the driver.
-func (d *HelloDriverPlugin) Capabilities() (*drivers.Capabilities, error) {
+func (d *MIDIDriverPlugin) Capabilities() (*drivers.Capabilities, error) {
 	return capabilities, nil
 }
 
 // Fingerprint returns a channel that will be used to send health information
 // and other driver specific node attributes.
-func (d *HelloDriverPlugin) Fingerprint(ctx context.Context) (<-chan *drivers.Fingerprint, error) {
+func (d *MIDIDriverPlugin) Fingerprint(ctx context.Context) (<-chan *drivers.Fingerprint, error) {
 	ch := make(chan *drivers.Fingerprint)
 	go d.handleFingerprint(ctx, ch)
 	return ch, nil
 }
 
 // handleFingerprint manages the channel and the flow of fingerprint data.
-func (d *HelloDriverPlugin) handleFingerprint(ctx context.Context, ch chan<- *drivers.Fingerprint) {
+func (d *MIDIDriverPlugin) handleFingerprint(ctx context.Context, ch chan<- *drivers.Fingerprint) {
 	defer close(ch)
 
 	// Nomad expects the initial fingerprint to be sent immediately
@@ -288,7 +297,7 @@ func (d *HelloDriverPlugin) handleFingerprint(ctx context.Context, ch chan<- *dr
 }
 
 // buildFingerprint returns the driver's fingerprint data
-func (d *HelloDriverPlugin) buildFingerprint() *drivers.Fingerprint {
+func (d *MIDIDriverPlugin) buildFingerprint() *drivers.Fingerprint {
 	fp := &drivers.Fingerprint{
 		Attributes:        map[string]*structs.Attribute{},
 		Health:            drivers.HealthStateHealthy,
@@ -311,36 +320,38 @@ func (d *HelloDriverPlugin) buildFingerprint() *drivers.Fingerprint {
 	//
 	// In the example below we check if the shell specified by the user exists
 	// in the node.
-	shell := d.config.Shell
+	//shell := d.config.LockFile
 
-	cmd := exec.Command("which", shell)
-	if err := cmd.Run(); err != nil {
-		return &drivers.Fingerprint{
-			Health:            drivers.HealthStateUndetected,
-			HealthDescription: fmt.Sprintf("shell %s not found", shell),
-		}
-	}
+	//cmd := exec.Command("which", shell)
+	//if err := cmd.Run(); err != nil {
+	//	return &drivers.Fingerprint{
+	//		Health:            drivers.HealthStateUndetected,
+	//		HealthDescription: fmt.Sprintf("shell %s not found", shell),
+	//	}
+	//}
 
-	// We also set the shell and its version as attributes
-	cmd = exec.Command(shell, "--version")
-	if out, err := cmd.Output(); err != nil {
-		d.logger.Warn("failed to find shell version: %v", err)
-	} else {
-		re := regexp.MustCompile("[0-9]\\.[0-9]\\.[0-9]")
-		version := re.FindString(string(out))
+	//// We also set the shell and its version as attributes
+	//cmd = exec.Command(shell, "--version")
+	//if out, err := cmd.Output(); err != nil {
+	//	d.logger.Warn("failed to find shell version: %v", err)
+	//} else {
+	//	re := regexp.MustCompile("[0-9]\\.[0-9]\\.[0-9]")
+	//	version := re.FindString(string(out))
 
-		fp.Attributes["driver.hello.shell_version"] = structs.NewStringAttribute(version)
-		fp.Attributes["driver.hello.shell"] = structs.NewStringAttribute(shell)
-	}
+	//	fp.Attributes["driver.hello.shell_version"] = structs.NewStringAttribute(version)
+	//	fp.Attributes["driver.hello.lock_file"] = structs.NewStringAttribute(shell)
+	//}
 
 	return fp
 }
 
 // StartTask returns a task handle and a driver network if necessary.
-func (d *HelloDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
+func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drivers.DriverNetwork, error) {
 	if _, ok := d.tasks.Get(cfg.ID); ok {
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
+
+	//d.logger.Error("HI TASK CONFIG", "cfg", fmt.Sprintf("%#v", cfg))
 
 	var driverConfig TaskConfig
 	if err := cfg.DecodeDriverConfig(&driverConfig); err != nil {
@@ -367,6 +378,7 @@ func (d *HelloDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHan
 	// greeter. The executor is then stored in the handle so we can access it
 	// later and the the plugin.Client is used to generate a reattach
 	// configuration that can be used to recover communication with the task.
+
 	executorConfig := &executor.ExecutorConfig{
 		LogFile:  filepath.Join(cfg.TaskDir().Dir, "executor.out"),
 		LogLevel: "debug",
@@ -377,12 +389,20 @@ func (d *HelloDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHan
 		return nil, nil, fmt.Errorf("failed to create executor: %v", err)
 	}
 
-	echoCmd := fmt.Sprintf(`echo "%s"`, driverConfig.Greeting)
+	//echoCmd := fmt.Sprintf(`echo "%s"`, driverConfig.MidiFile)
+	// go fork yourself.
 	execCmd := &executor.ExecCommand{
-		Cmd:        d.config.Shell,
-		Args:       []string{"-c", echoCmd},
-		StdoutPath: cfg.StdoutPath,
-		StderrPath: cfg.StderrPath,
+		//Cmd:        d.config.LockFile,
+		//Cmd:        "bash",
+		//ModePID:    "host",
+		//ModeIPC:    "host",
+		Cmd:                binPath,
+		Args:               []string{driverConfig.PortName, driverConfig.MidiFile},
+		StdoutPath:         cfg.StdoutPath,
+		StderrPath:         cfg.StderrPath,
+		NetworkIsolation:   cfg.NetworkIsolation,
+		User:               cfg.User,
+		BasicProcessCgroup: false,
 	}
 
 	ps, err := exec.Launch(execCmd)
@@ -418,7 +438,7 @@ func (d *HelloDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHan
 }
 
 // RecoverTask recreates the in-memory state of a task from a TaskHandle.
-func (d *HelloDriverPlugin) RecoverTask(handle *drivers.TaskHandle) error {
+func (d *MIDIDriverPlugin) RecoverTask(handle *drivers.TaskHandle) error {
 	if handle == nil {
 		return errors.New("error: handle cannot be nil")
 	}
@@ -471,7 +491,7 @@ func (d *HelloDriverPlugin) RecoverTask(handle *drivers.TaskHandle) error {
 }
 
 // WaitTask returns a channel used to notify Nomad when a task exits.
-func (d *HelloDriverPlugin) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {
+func (d *MIDIDriverPlugin) WaitTask(ctx context.Context, taskID string) (<-chan *drivers.ExitResult, error) {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return nil, drivers.ErrTaskNotFound
@@ -482,7 +502,7 @@ func (d *HelloDriverPlugin) WaitTask(ctx context.Context, taskID string) (<-chan
 	return ch, nil
 }
 
-func (d *HelloDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, ch chan *drivers.ExitResult) {
+func (d *MIDIDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, ch chan *drivers.ExitResult) {
 	defer close(ch)
 	var result *drivers.ExitResult
 
@@ -520,7 +540,7 @@ func (d *HelloDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, 
 }
 
 // StopTask stops a running task with the given signal and within the timeout window.
-func (d *HelloDriverPlugin) StopTask(taskID string, timeout time.Duration, signal string) error {
+func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal string) error {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
@@ -546,7 +566,7 @@ func (d *HelloDriverPlugin) StopTask(taskID string, timeout time.Duration, signa
 }
 
 // DestroyTask cleans up and removes a task that has terminated.
-func (d *HelloDriverPlugin) DestroyTask(taskID string, force bool) error {
+func (d *MIDIDriverPlugin) DestroyTask(taskID string, force bool) error {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
@@ -577,7 +597,7 @@ func (d *HelloDriverPlugin) DestroyTask(taskID string, force bool) error {
 }
 
 // InspectTask returns detailed status information for the referenced taskID.
-func (d *HelloDriverPlugin) InspectTask(taskID string) (*drivers.TaskStatus, error) {
+func (d *MIDIDriverPlugin) InspectTask(taskID string) (*drivers.TaskStatus, error) {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return nil, drivers.ErrTaskNotFound
@@ -587,7 +607,7 @@ func (d *HelloDriverPlugin) InspectTask(taskID string) (*drivers.TaskStatus, err
 }
 
 // TaskStats returns a channel which the driver should send stats to at the given interval.
-func (d *HelloDriverPlugin) TaskStats(ctx context.Context, taskID string, interval time.Duration) (<-chan *drivers.TaskResourceUsage, error) {
+func (d *MIDIDriverPlugin) TaskStats(ctx context.Context, taskID string, interval time.Duration) (<-chan *drivers.TaskResourceUsage, error) {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return nil, drivers.ErrTaskNotFound
@@ -605,13 +625,13 @@ func (d *HelloDriverPlugin) TaskStats(ctx context.Context, taskID string, interv
 }
 
 // TaskEvents returns a channel that the plugin can use to emit task related events.
-func (d *HelloDriverPlugin) TaskEvents(ctx context.Context) (<-chan *drivers.TaskEvent, error) {
+func (d *MIDIDriverPlugin) TaskEvents(ctx context.Context) (<-chan *drivers.TaskEvent, error) {
 	return d.eventer.TaskEvents(ctx)
 }
 
 // SignalTask forwards a signal to a task.
 // This is an optional capability.
-func (d *HelloDriverPlugin) SignalTask(taskID string, signal string) error {
+func (d *MIDIDriverPlugin) SignalTask(taskID string, signal string) error {
 	handle, ok := d.tasks.Get(taskID)
 	if !ok {
 		return drivers.ErrTaskNotFound
@@ -634,7 +654,7 @@ func (d *HelloDriverPlugin) SignalTask(taskID string, signal string) error {
 
 // ExecTask returns the result of executing the given command inside a task.
 // This is an optional capability.
-func (d *HelloDriverPlugin) ExecTask(taskID string, cmd []string, timeout time.Duration) (*drivers.ExecTaskResult, error) {
+func (d *MIDIDriverPlugin) ExecTask(taskID string, cmd []string, timeout time.Duration) (*drivers.ExecTaskResult, error) {
 	// TODO: implement driver specific logic to execute commands in a task.
 	return nil, errors.New("This driver does not support exec")
 }

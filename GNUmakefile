@@ -1,7 +1,20 @@
-PLUGIN_BINARY=hello-driver
+PLUGIN_BINARY=midi-portmidi
 export GO111MODULE=on
 
-default: build
+default: nomad example
+
+kill:
+	pkill nomad || true
+
+nomad: kill build
+	nomad agent -dev -config=./example/agent.hcl | grep -i midi &
+
+wait:
+	while true; do nomad status && break ; sleep 1; done
+
+.PHONY: example
+example: wait
+	nomad run example/example.nomad
 
 .PHONY: clean
 clean: ## Remove build artifacts

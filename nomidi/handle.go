@@ -1,14 +1,14 @@
-package hello
+package nomidi
 
 import (
 	"context"
+	"github.com/hashicorp/nomad/drivers/shared/executor"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
-	"github.com/hashicorp/nomad/drivers/shared/executor"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 

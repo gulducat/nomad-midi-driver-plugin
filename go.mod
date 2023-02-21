@@ -1,13 +1,13 @@
-// TODO: update the module path below to match your own repository
-module github.com/hashicorp/nomad-skeleton-driver-plugin
+module github.com/gulducat/nomad-midi-driver-plugin
 
-go 1.19
+go 1.20
 
 require (
 	github.com/hashicorp/consul-template v0.29.6-0.20221026140134-90370e07bf62
 	github.com/hashicorp/go-hclog v1.3.1
 	github.com/hashicorp/go-plugin v1.4.4
 	github.com/hashicorp/nomad v1.4.2
+	gitlab.com/gomidi/midi/v2 v2.0.25
 )
 
 require (
