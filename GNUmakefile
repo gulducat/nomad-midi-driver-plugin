@@ -14,7 +14,7 @@ wait:
 
 .PHONY: example
 example: wait
-	nomad run example/example.nomad.hcl
+	nomad run example/hit.nomad
 
 .PHONY: clean
 clean: ## Remove build artifacts

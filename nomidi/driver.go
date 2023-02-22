@@ -102,6 +102,7 @@ var (
 		//	hclspec.NewAttr("greeting", "string", false),
 		//	hclspec.NewLiteral(`"Hello, World!"`),
 		//),
+		"song":      hclspec.NewAttr("song", "string", true),
 		"midi_file": hclspec.NewAttr("midi_file", "string", true),
 		"port_name": hclspec.NewAttr("port_name", "string", true),
 	})
@@ -139,6 +140,7 @@ type TaskConfig struct {
 	// taskConfigSpec variable above. It's used to convert the string
 	// configuration for the task into Go contructs.
 	//Greeting string `codec:"greeting"`
+	Song     string `codec:"song"`
 	MidiFile string `codec:"midi_file"`
 	PortName string `codec:"port_name"`
 }
@@ -348,7 +350,7 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 
-	//d.logger.Error("HI TASK CONFIG", "cfg", fmt.Sprintf("%#v", cfg))
+	d.logger.Error("HI TASK CONFIG", "cfg", fmt.Sprintf("%#v", cfg))
 
 	var driverConfig TaskConfig
 	if err := cfg.DecodeDriverConfig(&driverConfig); err != nil {
@@ -406,20 +408,26 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	//}
 
 	ctx, stopper := context.WithCancel(d.ctx)
+
 	stdout, err := fifo.OpenWriter(cfg.StdoutPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fifo.OpenWriter err: %w", err)
 	}
 	opts := hclog.DefaultOptions
 	opts.Output = stdout
-	player := NewPlayer(hclog.New(opts))
-	// TODO: it is hanging here.  used to be a goroutine behind h.run()
+	logger := hclog.New(opts)
+
+	clock := GetClock(driverConfig.Song)
+	player := NewPlayer(logger, driverConfig.PortName, driverConfig.MidiFile)
+	clock.Subscribe(player)
+
 	h := &taskHandle{
 		taskConfig: cfg,
 		procState:  drivers.TaskStateRunning,
 		startedAt:  time.Now().Round(time.Millisecond),
 		logger:     d.logger,
 		// my stuff
+		clock:   clock,
 		player:  player,
 		stopper: stopper,
 	}
@@ -436,8 +444,9 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	}
 
 	d.tasks.Set(cfg.ID, h)
-	// TODO: two goroutines?  a sign of something wrong?
-	go player.Play(ctx, driverConfig.PortName, driverConfig.MidiFile)
+	// TODO: how many goroutines?  a sign of something wrong?
+	go clock.Tick(ctx)
+	go player.Play(ctx)
 	go h.run(ctx)
 	return handle, nil, nil
 }
@@ -585,9 +594,14 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	defer cancel()
 
 	handle.stopper()
-	handle.logger.Info("did stopper(), Wait()ing...")
+	handle.logger.Info("did stopper(), Wait()ing...", "id", taskID)
 	handle.player.Wait(ctx)
-	handle.logger.Info("done Wait()ing.")
+	handle.logger.Info("done Wait()ing.", "id", taskID)
+	handle.logger.Info("deleting clock", "id", taskID)
+	handle.clock.Unsubscribe(handle.player)
+	if err := DeleteClock(handle.clock.Name); err != nil {
+		handle.logger.Warn("couldn't delete clock", "err", err, "id", taskID)
+	}
 
 	return nil
 }

@@ -26,6 +26,7 @@ type taskHandle struct {
 	exitResult  *drivers.ExitResult
 
 	// TODO: add any extra relevant information about the task.
+	clock   *Clock
 	player  *Player
 	stopper func()
 }
@@ -69,6 +70,7 @@ func (h *taskHandle) run(ctx context.Context) {
 	h.procState = drivers.TaskStateExited
 	if err != nil {
 		h.exitResult.Err = err
+		h.exitResult.ExitCode = 1
 		h.procState = drivers.TaskStateUnknown
 	}
 }
