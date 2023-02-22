@@ -2,13 +2,12 @@ package nomidi
 
 import (
 	"context"
-	"github.com/hashicorp/nomad/drivers/shared/executor"
-	"strconv"
+	"github.com/hashicorp/nomad/client/structs"
+	"github.com/hashicorp/nomad/plugins/device"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
@@ -19,17 +18,16 @@ type taskHandle struct {
 	// stateLock syncs access to all fields below
 	stateLock sync.RWMutex
 
-	logger       hclog.Logger
-	exec         executor.Executor
-	pluginClient *plugin.Client
-	taskConfig   *drivers.TaskConfig
-	procState    drivers.TaskState
-	startedAt    time.Time
-	completedAt  time.Time
-	exitResult   *drivers.ExitResult
+	logger      hclog.Logger
+	taskConfig  *drivers.TaskConfig
+	procState   drivers.TaskState
+	startedAt   time.Time
+	completedAt time.Time
+	exitResult  *drivers.ExitResult
 
 	// TODO: add any extra relevant information about the task.
-	pid int
+	player  *Player
+	stopper func()
 }
 
 func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
@@ -43,9 +41,9 @@ func (h *taskHandle) TaskStatus() *drivers.TaskStatus {
 		StartedAt:   h.startedAt,
 		CompletedAt: h.completedAt,
 		ExitResult:  h.exitResult,
-		DriverAttributes: map[string]string{
-			"pid": strconv.Itoa(h.pid),
-		},
+		//DriverAttributes: map[string]string{
+		//	"pid": strconv.Itoa(h.pid),
+		//},
 	}
 }
 
@@ -55,7 +53,7 @@ func (h *taskHandle) IsRunning() bool {
 	return h.procState == drivers.TaskStateRunning
 }
 
-func (h *taskHandle) run() {
+func (h *taskHandle) run(ctx context.Context) {
 	h.stateLock.Lock()
 	if h.exitResult == nil {
 		h.exitResult = &drivers.ExitResult{}
@@ -63,18 +61,41 @@ func (h *taskHandle) run() {
 	h.stateLock.Unlock()
 
 	// TODO: wait for your task to complete and upate its state.
-	ps, err := h.exec.Wait(context.Background())
 	h.stateLock.Lock()
 	defer h.stateLock.Unlock()
+	err := h.player.Wait(ctx)
 
+	h.completedAt = time.Now()
+	h.procState = drivers.TaskStateExited
 	if err != nil {
 		h.exitResult.Err = err
 		h.procState = drivers.TaskStateUnknown
-		h.completedAt = time.Now()
-		return
 	}
-	h.procState = drivers.TaskStateExited
-	h.exitResult.ExitCode = ps.ExitCode
-	h.exitResult.Signal = ps.Signal
-	h.completedAt = ps.Time
+}
+
+func (h *taskHandle) stats(ctx context.Context, interval time.Duration) (ch chan *drivers.TaskResourceUsage) {
+	ch = make(chan *drivers.TaskResourceUsage)
+	go func() {
+		defer close(ch)
+		timer := time.NewTimer(0)
+		for {
+			// all this for bogus zero stats...
+			st := &drivers.TaskResourceUsage{
+				ResourceUsage: &structs.ResourceUsage{
+					CpuStats:    &structs.CpuStats{},
+					MemoryStats: &structs.MemoryStats{},
+					DeviceStats: []*device.DeviceGroupStats{},
+				},
+				Timestamp: time.Now().Unix(),
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				timer.Reset(interval)
+			case ch <- st:
+			}
+		}
+	}()
+	return ch
 }

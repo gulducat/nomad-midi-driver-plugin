@@ -1,81 +1,78 @@
 package nomidi
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"github.com/hashicorp/go-hclog"
 	midi "gitlab.com/gomidi/midi/v2"
-	_ "gitlab.com/gomidi/midi/v2/drivers/portmididrv" // autoregisters driver
 	"gitlab.com/gomidi/midi/v2/smf"
 	"log"
 )
 
-func Play(port, file string) error {
-	defer midi.CloseDriver()
-
-	/* this already gets caught by ReadTracks...
-	// and methinks we already need to CloseDriver() ...?
-	if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
-		return err
+func NewPlayer(logger hclog.Logger) *Player {
+	return &Player{
+		Done:  make(chan struct{}),
+		errCh: make(chan error, 1),
+		err:   errors.New("midi not done yet"),
+		log:   logger,
 	}
-	*/
+}
+
+type Player struct {
+	Done  chan struct{}
+	errCh chan error
+	err   error
+	log   hclog.Logger
+}
+
+func (p *Player) Wait(ctx context.Context) error {
+	select {
+	case <-p.Done:
+		return p.Err()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (p *Player) Err() error {
+	select {
+	case e := <-p.errCh:
+		p.err = e
+	default:
+	}
+	return p.err
+}
+
+func (p *Player) Play(ctx context.Context, port, file string) {
+	defer close(p.Done)
 
 	out, err := midi.FindOutPort(port)
 	if err != nil {
-		return err
+		p.errCh <- err
+		return
 	}
-	log.Println("out:", out)
+	p.log.Info("found port", "out", out)
 	for {
+		select {
+		case <-ctx.Done():
+			p.errCh <- ctx.Err() // is this an error for me, really?
+			// this one is for operators, not job authors, so log instead of logger
+			log.Printf("ctx done, so i'm done too: %s", ctx.Err())
+			return
+		default:
+		}
+
 		err = smf.ReadTracks(file).Do(
 			func(te smf.TrackEvent) {
-				if te.Message.IsMeta() {
-					fmt.Printf("[%v] @%vms %s\n", te.TrackNo, te.AbsMicroSeconds/1000, te.Message.String())
-					/*
-						var t string
-						if mm.Text(&t) {
-							//fmt.Printf("[%v] %s %s (%s): %q\n", te.TrackNo, msg.Type().Kind(), msg.String(), msg.Type(), t)
-							fmt.Printf("[%v] %s: %q\n", te.TrackNo, te.Type, t)
-							//fmt.Printf("[%v] %s %s (%s): %q\n", te.TrackNo, mm.Type().Kind(), mm.String(), mm.Type(), t)
-						}
-						var bpm float64
-						if mm.Tempo(&bpm) {
-							fmt.Printf("[%v] %s: %v\n", te.TrackNo, te.Type, math.Round(bpm))
-						}
-					*/
-				} else {
-					fmt.Printf("[%v] %s\n", te.TrackNo, te.Message)
-				}
+				p.log.Info("te",
+					"track", te.TrackNo,
+					"msg", te.Message.String(),
+				)
 			},
 		).Play(out)
 		if err != nil {
-			return err
+			p.errCh <- err
+			return
 		}
 	}
-	return nil
 }
-
-// this junk is already done in state.go -> taskStore
-/*
-import "sync"
-
-// global state
-var tasks *sync.Map = new(sync.Map)
-
-type MIDI struct {
-	ID string
-}
-
-func SetTask(m *MIDI) {
-	tasks.Store(m.ID, m)
-}
-
-func GetTask(id string) *MIDI {
-	t, ok := tasks.Load(id)
-	if !ok {
-		return new(MIDI)
-	}
-	return t.(*MIDI)
-}
-
-func DeleteTask(id string) {
-	tasks.Delete(id)
-}
-*/

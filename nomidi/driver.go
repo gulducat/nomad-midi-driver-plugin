@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/nomad/client/lib/fifo"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/hashicorp/consul-template/signals"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
-	"github.com/hashicorp/nomad/drivers/shared/executor"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/hashicorp/nomad/plugins/shared/hclspec"
@@ -161,7 +160,7 @@ type TaskState struct {
 	// will respawn a new instance of the plugin and try to restore its
 	// in-memory representation of the running tasks using the RecoverTask()
 	// method below.
-	Pid int
+	//Pid int
 }
 
 // MIDIDriverPlugin tasks will play a midi file through a midi port.
@@ -224,8 +223,6 @@ func (d *MIDIDriverPlugin) SetConfig(cfg *base.Config) error {
 			return err
 		}
 	}
-
-	//d.logger.Error("HEY SUCKA", "args", strings.Join(os.Args, " "))
 
 	// Save the configuration to the plugin
 	d.config = &config
@@ -379,53 +376,59 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	// later and the the plugin.Client is used to generate a reattach
 	// configuration that can be used to recover communication with the task.
 
-	executorConfig := &executor.ExecutorConfig{
-		LogFile:  filepath.Join(cfg.TaskDir().Dir, "executor.out"),
-		LogLevel: "debug",
-	}
-
-	exec, pluginClient, err := executor.CreateExecutor(d.logger, d.nomadConfig, executorConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create executor: %v", err)
-	}
-
+	//executorConfig := &executor.ExecutorConfig{
+	//	LogFile:  filepath.Join(cfg.TaskDir().Dir, "executor.out"),
+	//	LogLevel: "debug",
+	//}
+	//exec, pluginClient, err := executor.CreateExecutor(d.logger, d.nomadConfig, executorConfig)
+	//if err != nil {
+	//	return nil, nil, fmt.Errorf("failed to create executor: %v", err)
+	//}
 	//echoCmd := fmt.Sprintf(`echo "%s"`, driverConfig.MidiFile)
 	// go fork yourself.
-	execCmd := &executor.ExecCommand{
-		//Cmd:        d.config.LockFile,
-		//Cmd:        "bash",
-		//ModePID:    "host",
-		//ModeIPC:    "host",
-		Cmd:                binPath,
-		Args:               []string{driverConfig.PortName, driverConfig.MidiFile},
-		StdoutPath:         cfg.StdoutPath,
-		StderrPath:         cfg.StderrPath,
-		NetworkIsolation:   cfg.NetworkIsolation,
-		User:               cfg.User,
-		BasicProcessCgroup: false,
-	}
+	//execCmd := &executor.ExecCommand{
+	//	//Cmd:        d.config.LockFile,
+	//	//Cmd:        "bash",
+	//	//ModePID:    "host",
+	//	//ModeIPC:    "host",
+	//	Cmd:                binPath,
+	//	Args:               []string{driverConfig.PortName, driverConfig.MidiFile},
+	//	StdoutPath:         cfg.StdoutPath,
+	//	StderrPath:         cfg.StderrPath,
+	//	NetworkIsolation:   cfg.NetworkIsolation,
+	//	User:               cfg.User,
+	//	BasicProcessCgroup: false,
+	//}
+	//ps, err := exec.Launch(execCmd)
+	//if err != nil {
+	//	pluginClient.Kill()
+	//	return nil, nil, fmt.Errorf("failed to launch command with executor: %v", err)
+	//}
 
-	ps, err := exec.Launch(execCmd)
+	ctx, stopper := context.WithCancel(d.ctx)
+	stdout, err := fifo.OpenWriter(cfg.StdoutPath)
 	if err != nil {
-		pluginClient.Kill()
-		return nil, nil, fmt.Errorf("failed to launch command with executor: %v", err)
+		return nil, nil, fmt.Errorf("fifo.OpenWriter err: %w", err)
 	}
-
+	opts := hclog.DefaultOptions
+	opts.Output = stdout
+	player := NewPlayer(hclog.New(opts))
+	// TODO: it is hanging here.  used to be a goroutine behind h.run()
 	h := &taskHandle{
-		exec:         exec,
-		pid:          ps.Pid,
-		pluginClient: pluginClient,
-		taskConfig:   cfg,
-		procState:    drivers.TaskStateRunning,
-		startedAt:    time.Now().Round(time.Millisecond),
-		logger:       d.logger,
+		taskConfig: cfg,
+		procState:  drivers.TaskStateRunning,
+		startedAt:  time.Now().Round(time.Millisecond),
+		logger:     d.logger,
+		// my stuff
+		player:  player,
+		stopper: stopper,
 	}
 
 	driverState := TaskState{
-		ReattachConfig: structs.ReattachConfigFromGoPlugin(pluginClient.ReattachConfig()),
-		Pid:            ps.Pid,
-		TaskConfig:     cfg,
-		StartedAt:      h.startedAt,
+		//ReattachConfig: structs.ReattachConfigFromGoPlugin(pluginClient.ReattachConfig()),
+		//Pid:            ps.Pid,
+		TaskConfig: cfg,
+		StartedAt:  h.startedAt,
 	}
 
 	if err := handle.SetDriverState(&driverState); err != nil {
@@ -433,7 +436,9 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	}
 
 	d.tasks.Set(cfg.ID, h)
-	go h.run()
+	// TODO: two goroutines?  a sign of something wrong?
+	go player.Play(ctx, driverConfig.PortName, driverConfig.MidiFile)
+	go h.run(ctx)
 	return handle, nil, nil
 }
 
@@ -446,6 +451,9 @@ func (d *MIDIDriverPlugin) RecoverTask(handle *drivers.TaskHandle) error {
 	if _, ok := d.tasks.Get(handle.Config.ID); ok {
 		return nil
 	}
+
+	// TODO(db): replicate this happening, what can be done?
+	return fmt.Errorf("unable to recover midi task like this...? id: %s", handle.Config.ID)
 
 	var taskState TaskState
 	if err := handle.GetDriverState(&taskState); err != nil {
@@ -464,29 +472,28 @@ func (d *MIDIDriverPlugin) RecoverTask(handle *drivers.TaskHandle) error {
 	//
 	// In the example below we use the executor to re-attach to the process
 	// that was created when the task first started.
-	plugRC, err := structs.ReattachConfigToGoPlugin(taskState.ReattachConfig)
-	if err != nil {
-		return fmt.Errorf("failed to build ReattachConfig from taskConfig state: %v", err)
-	}
-
-	execImpl, pluginClient, err := executor.ReattachToExecutor(plugRC, d.logger)
-	if err != nil {
-		return fmt.Errorf("failed to reattach to executor: %v", err)
-	}
+	//plugRC, err := structs.ReattachConfigToGoPlugin(taskState.ReattachConfig)
+	//if err != nil {
+	//	return fmt.Errorf("failed to build ReattachConfig from taskConfig state: %v", err)
+	//}
+	//execImpl, pluginClient, err := executor.ReattachToExecutor(plugRC, d.logger)
+	//if err != nil {
+	//	return fmt.Errorf("failed to reattach to executor: %v", err)
+	//}
 
 	h := &taskHandle{
-		exec:         execImpl,
-		pid:          taskState.Pid,
-		pluginClient: pluginClient,
-		taskConfig:   taskState.TaskConfig,
-		procState:    drivers.TaskStateRunning,
-		startedAt:    taskState.StartedAt,
-		exitResult:   &drivers.ExitResult{},
+		//exec:         execImpl,
+		//pid:          taskState.Pid,
+		//pluginClient: pluginClient,
+		taskConfig: taskState.TaskConfig,
+		procState:  drivers.TaskStateRunning,
+		startedAt:  taskState.StartedAt,
+		exitResult: &drivers.ExitResult{},
 	}
 
 	d.tasks.Set(taskState.TaskConfig.ID, h)
 
-	go h.run()
+	go h.run(d.ctx)
 	return nil
 }
 
@@ -516,15 +523,22 @@ func (d *MIDIDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, c
 	// In the example below we block and wait until the executor finishes
 	// running, at which point we send the exit code and signal in the result
 	// channel.
-	ps, err := handle.exec.Wait(ctx)
+	//ps, err := handle.exec.Wait(ctx)
+	//if err != nil {
+	//	result = &drivers.ExitResult{
+	//		Err: fmt.Errorf("executor: error waiting on process: %v", err),
+	//	}
+	//} else {
+	//	result = &drivers.ExitResult{
+	//		ExitCode: ps.ExitCode,
+	//		Signal:   ps.Signal,
+	//	}
+	//}
+
+	err := handle.player.Wait(ctx)
 	if err != nil {
 		result = &drivers.ExitResult{
-			Err: fmt.Errorf("executor: error waiting on process: %v", err),
-		}
-	} else {
-		result = &drivers.ExitResult{
-			ExitCode: ps.ExitCode,
-			Signal:   ps.Signal,
+			Err: fmt.Errorf("handleWait: error waiting on player: %v", err),
 		}
 	}
 
@@ -555,12 +569,25 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	// In the example below we let the executor handle the task shutdown
 	// process for us, but you might need to customize this for your own
 	// implementation.
-	if err := handle.exec.Shutdown(signal, timeout); err != nil {
-		if handle.pluginClient.Exited() {
-			return nil
-		}
-		return fmt.Errorf("executor Shutdown failed: %v", err)
-	}
+	//if err := handle.exec.Shutdown(signal, timeout); err != nil {
+	//	if handle.pluginClient.Exited() {
+	//		return nil
+	//	}
+	//	return fmt.Errorf("executor Shutdown failed: %v", err)
+	//}
+
+	handle.logger.Info("stopping task",
+		"id", taskID,
+		"timeout", timeout.String(),
+		"signal", signal)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	handle.stopper()
+	handle.logger.Info("did stopper(), Wait()ing...")
+	handle.player.Wait(ctx)
+	handle.logger.Info("done Wait()ing.")
 
 	return nil
 }
@@ -584,15 +611,20 @@ func (d *MIDIDriverPlugin) DestroyTask(taskID string, force bool) error {
 	//
 	// In the example below we use the executor to force shutdown the task
 	// (timeout equals 0).
-	if !handle.pluginClient.Exited() {
-		if err := handle.exec.Shutdown("", 0); err != nil {
-			handle.logger.Error("destroying executor failed", "err", err)
-		}
-
-		handle.pluginClient.Kill()
+	select {
+	case <-handle.player.Done:
+		d.tasks.Delete(taskID)
+	default:
+		// do i ever hit this?
+		return errors.New("player context not done")
 	}
+	//if !handle.pluginClient.Exited() {
+	//	if err := handle.exec.Shutdown("", 0); err != nil {
+	//		handle.logger.Error("destroying executor failed", "err", err)
+	//	}
+	//	handle.pluginClient.Kill()
+	//}
 
-	d.tasks.Delete(taskID)
 	return nil
 }
 
@@ -621,7 +653,8 @@ func (d *MIDIDriverPlugin) TaskStats(ctx context.Context, taskID string, interva
 	//
 	// In the example below we use the Stats function provided by the executor,
 	// but you can build a set of functions similar to the fingerprint process.
-	return handle.exec.Stats(ctx, interval)
+	//return handle.exec.Stats(ctx, interval)
+	return handle.stats(ctx, interval), nil
 }
 
 // TaskEvents returns a channel that the plugin can use to emit task related events.
@@ -632,24 +665,25 @@ func (d *MIDIDriverPlugin) TaskEvents(ctx context.Context) (<-chan *drivers.Task
 // SignalTask forwards a signal to a task.
 // This is an optional capability.
 func (d *MIDIDriverPlugin) SignalTask(taskID string, signal string) error {
-	handle, ok := d.tasks.Get(taskID)
-	if !ok {
-		return drivers.ErrTaskNotFound
-	}
+	return nil
+
+	//handle, ok := d.tasks.Get(taskID)
+	//if !ok {
+	//	return drivers.ErrTaskNotFound
+	//}
 
 	// TODO: implement driver specific signal handling logic.
 	//
 	// The given signal must be forwarded to the target taskID. If this plugin
 	// doesn't support receiving signals (capability SendSignals is set to
 	// false) you can just return nil.
-	sig := os.Interrupt
-	if s, ok := signals.SignalLookup[signal]; ok {
-		sig = s
-	} else {
-		d.logger.Warn("unknown signal to send to task, using SIGINT instead", "signal", signal, "task_id", handle.taskConfig.ID)
-
-	}
-	return handle.exec.Signal(sig)
+	//sig := os.Interrupt
+	//if s, ok := signals.SignalLookup[signal]; ok {
+	//	sig = s
+	//} else {
+	//	d.logger.Warn("unknown signal to send to task, using SIGINT instead", "signal", signal, "task_id", handle.taskConfig.ID)
+	//}
+	//return handle.exec.Signal(sig)
 }
 
 // ExecTask returns the result of executing the given command inside a task.
