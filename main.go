@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/gulducat/nomad-midi-driver-plugin/nomidi"
 	"gitlab.com/gomidi/midi/v2"
 	"log"
@@ -32,18 +31,26 @@ func main() {
 
 func testSync() {
 	/* testing concurrent files, make sure they are sync'd */
-	f := "example/hit.mid"
 	logger := hclog.Default()
 	var players []*nomidi.Player
-	ctx, stop := context.WithTimeout(context.Background(), time.Second*8)
+	ctx, stop := context.WithTimeout(context.Background(), time.Second*30)
 	defer stop()
 
 	clock := nomidi.GetClock("cli")
 	go clock.Tick(ctx)
 
-	for i := 1; i <= 4; i++ {
-		port := fmt.Sprintf("Hit%d", i)
-		p := nomidi.NewPlayer(logger, port, f)
+	for f, bars := range map[string]int{
+		"hit":     1,
+		"bass":    2,
+		"e-piano": 4,
+		"drums":   8,
+	} {
+		cfg := nomidi.TaskConfig{
+			PortName: f,
+			MidiFile: "example/" + f + ".mid",
+			Bars:     bars,
+		}
+		p := nomidi.NewPlayer(logger, cfg)
 		clock.Subscribe(p)
 		players = append(players, p)
 		go p.Play(ctx)
@@ -51,28 +58,27 @@ func testSync() {
 
 	for _, p := range players {
 		p.Wait(ctx)
-		clock.Unsubscribe(p)
-	}
-	if err := nomidi.DeleteClock("cli"); err != nil {
-		log.Fatal(err)
 	}
 }
 
-func cli(port, midiFile string) {
+func cli(port, file string) {
 	// TODO: handle signals?
 	ctx := context.Background()
 
-	logger := hclog.Default()
-	player := nomidi.NewPlayer(logger, port, midiFile)
-
 	clock := nomidi.NewClock("cli")
 	defer nomidi.DeleteClock("cli")
+	go clock.Tick(ctx)
+
+	logger := hclog.Default()
+	cfg := nomidi.TaskConfig{
+		PortName: port,
+		MidiFile: file,
+	}
+	player := nomidi.NewPlayer(logger, cfg)
 	clock.Subscribe(player)
 	defer clock.Unsubscribe(player)
 
-	go clock.Tick(ctx)
 	go player.Play(ctx)
-
 	err := player.Wait(ctx)
 	if err != nil {
 		log.Fatal(err)

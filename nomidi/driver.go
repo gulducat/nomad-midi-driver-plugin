@@ -105,6 +105,7 @@ var (
 		"song":      hclspec.NewAttr("song", "string", true),
 		"midi_file": hclspec.NewAttr("midi_file", "string", true),
 		"port_name": hclspec.NewAttr("port_name", "string", true),
+		"bars":      hclspec.NewAttr("bars", "number", true),
 	})
 
 	// capabilities indicates what optional features this driver supports
@@ -143,6 +144,7 @@ type TaskConfig struct {
 	Song     string `codec:"song"`
 	MidiFile string `codec:"midi_file"`
 	PortName string `codec:"port_name"`
+	Bars     int    `codec:"bars"`
 }
 
 // TaskState is the runtime state which is encoded in the handle returned to
@@ -418,7 +420,7 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	logger := hclog.New(opts)
 
 	clock := GetClock(driverConfig.Song)
-	player := NewPlayer(logger, driverConfig.PortName, driverConfig.MidiFile)
+	player := NewPlayer(logger, driverConfig)
 	clock.Subscribe(player)
 
 	h := &taskHandle{
@@ -602,6 +604,7 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	if err := DeleteClock(handle.clock.Name); err != nil {
 		handle.logger.Warn("couldn't delete clock", "err", err, "id", taskID)
 	}
+	handle.logger.Info("done deleting clock", "id", taskID)
 
 	return nil
 }

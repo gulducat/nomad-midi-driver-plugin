@@ -9,7 +9,8 @@ job "hit" {
       config {
         song      = "one"
         midi_file = "${local.dir}/hit-bar.mid"
-        port_name = "Hit1"
+        port_name = "hit"
+        bars = 1
       }
     }
 #    task "hit2" {
@@ -17,7 +18,8 @@ job "hit" {
 #      config {
 #        song      = "one"
 #        midi_file = "${local.dir}/hit-bar.mid"
-#        port_name = "Hit2"
+#        port_name = "hit2"
+#        bars = 1
 #      }
 #    }
 #    task "hit3" {
@@ -25,7 +27,8 @@ job "hit" {
 #      config {
 #        song      = "one"
 #        midi_file = "${local.dir}/hit-bar.mid"
-#        port_name = "Hit3"
+#        port_name = "hit3"
+#        bars = 1
 #      }
 #    }
   }

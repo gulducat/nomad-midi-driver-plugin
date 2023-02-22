@@ -59,13 +59,13 @@ func DeleteClock(name string) error {
 func (c *Clock) Subscribe(p *Player) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.subs[p.Port] = p.Tick
+	c.subs[p.Cfg.PortName] = p.Tick
 }
 
 func (c *Clock) Unsubscribe(p *Player) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	delete(c.subs, p.Port)
+	delete(c.subs, p.Cfg.PortName)
 }
 
 func (c *Clock) Tick(ctx context.Context) {

@@ -9,12 +9,10 @@ import (
 	"log"
 )
 
-// TODO: just pass cfg in here.
-func NewPlayer(logger hclog.Logger, port, file string) *Player {
+func NewPlayer(logger hclog.Logger, cfg TaskConfig) *Player {
 	p := &Player{
-		Port:  port,
-		File:  file,
-		Tick:  make(chan struct{}, 1),
+		Cfg:   cfg,
+		Tick:  make(chan struct{}),
 		Done:  make(chan struct{}),
 		errCh: make(chan error, 1),
 		err:   errors.New("midi not done yet"),
@@ -24,8 +22,7 @@ func NewPlayer(logger hclog.Logger, port, file string) *Player {
 }
 
 type Player struct {
-	Port  string
-	File  string
+	Cfg   TaskConfig
 	Tick  chan struct{}
 	Done  chan struct{}
 	errCh chan error
@@ -56,7 +53,11 @@ func (p *Player) Err() error {
 func (p *Player) Play(ctx context.Context) {
 	defer close(p.Done)
 
-	out, err := midi.FindOutPort(p.Port)
+	port := p.Cfg.PortName
+	file := p.Cfg.MidiFile
+	bars := p.Cfg.Bars
+
+	out, err := midi.FindOutPort(port)
 	if err != nil {
 		p.errCh <- err
 		return
@@ -68,23 +69,37 @@ func (p *Player) Play(ctx context.Context) {
 		}
 	}()
 
+	errCh := make(chan error, 1)
+	bar := 1
 	for {
 		select {
 		case <-ctx.Done():
 			p.errCh <- ctx.Err() // is this an error for me, really?
 			// this one is for operators, not job authors, so log instead of logger
-			log.Printf("ctx done, so i (%s) am done too: %s", p.Port, ctx.Err())
+			log.Printf("ctx done, so i (%s) am done too: %s", port, ctx.Err())
+			return
+		case e := <-errCh:
+			p.errCh <- e
+			log.Printf("error in player: %s", e)
 			return
 		case <-p.Tick:
-			// clock says go ahead.
+			// clock says go ahead, once per bar.
 		}
 
+		// but we only play if lined up on the right bar count
+		if bar > 1 {
+			log.Printf("bar %d skip: %s", bar, port)
+			bar--
+			continue
+		}
+		bar = bars
+
 		// for easier inspection in nomad agent logs for now
-		log.Println("playing:", p.Port)
+		log.Printf("bar %d play: %s", bar, port)
 		// this goes to task logs
 		//p.log.Info("playing")
 
-		//err = smf.ReadTracks(p.File).Do(
+		//err = smf.ReadTracks(file).Do(
 		//	func(te smf.TrackEvent) {
 		//		p.log.Info("te",
 		//			"track", te.TrackNo,
@@ -92,10 +107,14 @@ func (p *Player) Play(ctx context.Context) {
 		//		)
 		//	},
 		//).Play(out)
-		err = smf.ReadTracks(p.File).Play(out)
-		if err != nil {
-			p.errCh <- err
-			return
-		}
+
+		// this blocks so without a goroutine would produce variable duration between tick reads.
+		// backgrounding this allows the clock to continue ticking appropriately.
+		// TODO: but now this not-blocking means the program can exit without a MIDI NOTE OFF command...
+		go func() {
+			if e := smf.ReadTracks(file).Play(out); e != nil {
+				errCh <- e
+			}
+		}()
 	}
 }
