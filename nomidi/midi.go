@@ -2,14 +2,18 @@ package nomidi
 
 import (
 	"context"
+	"errors"
 	"github.com/hashicorp/go-hclog"
 	midi "gitlab.com/gomidi/midi/v2"
 	"gitlab.com/gomidi/midi/v2/smf"
 	"path"
 	"sync"
+	"time"
 )
 
 func NewPlayer(logger hclog.Logger, cfg TaskConfig) *Player {
+	logger = hclog.Default().Named("Player " + cfg.PortName)
+	logger.SetLevel(hclog.Debug)
 	p := &Player{
 		Cfg:   cfg,
 		Tick:  make(chan struct{}, 1),
@@ -30,7 +34,7 @@ type Player struct {
 }
 
 func (p *Player) Wait(ctx context.Context) error {
-	p.log.Debug("waiting")
+	p.log.Debug("start waiting")
 	var err error
 	select {
 	case <-p.Done:
@@ -92,6 +96,9 @@ func (p *Player) Play(ctx context.Context) {
 			p.errCh <- e
 			//log.Printf("error in player: %s", e)
 			p.log.Error("player error", "err", e)
+			return
+		case <-time.After(time.Second * 10): // 10 is ok? would be down to like 30 bpm
+			p.errCh <- errors.New("timeout after 5 seconds waiting for Tick")
 			return
 		case <-p.Tick:
 			// clock says go ahead, once per bar.

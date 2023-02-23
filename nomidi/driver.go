@@ -637,6 +637,9 @@ func (d *MIDIDriverPlugin) DestroyTask(taskID string, force bool) error {
 	case <-handle.player.Done:
 		handle.logger.Info("deleting", "id", taskID)
 		d.tasks.Delete(taskID)
+		if err := DeleteClock(handle.clock.Name); err != nil {
+			handle.logger.Info("did not delete clock", "err", err)
+		}
 	default:
 		// do i ever hit this?
 		return errors.New("player context not done")
