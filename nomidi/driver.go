@@ -449,8 +449,13 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	}
 
 	d.tasks.Set(cfg.ID, h)
+
 	// TODO: how many goroutines?  a sign of something wrong?
-	go clock.Tick(ctx)
+
+	// !! the clock ticking *needs* not to be tied to any single task, so it gets context.Background()
+	// it gets cleaned up in DestroyTask() when there are no subscribers to it.
+	go clock.Tick(context.Background())
+
 	go player.Play(ctx)
 	go h.run(ctx)
 	return handle, nil, nil
