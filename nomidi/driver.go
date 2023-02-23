@@ -525,7 +525,7 @@ func (d *MIDIDriverPlugin) WaitTask(ctx context.Context, taskID string) (<-chan 
 
 func (d *MIDIDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, ch chan *drivers.ExitResult) {
 	defer close(ch)
-	var result *drivers.ExitResult
+	var result = &drivers.ExitResult{}
 
 	// TODO: implement driver specific logic to notify Nomad the task has been
 	// completed and what was the exit result.
@@ -551,9 +551,7 @@ func (d *MIDIDriverPlugin) handleWait(ctx context.Context, handle *taskHandle, c
 
 	err := handle.player.Wait(ctx)
 	if err != nil {
-		result = &drivers.ExitResult{
-			Err: fmt.Errorf("handleWait: error waiting on player: %v", err),
-		}
+		result.Err = fmt.Errorf("handleWait: error waiting on player: %v", err)
 	}
 
 	for {
