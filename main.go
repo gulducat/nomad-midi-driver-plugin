@@ -40,10 +40,12 @@ func testSync() {
 	go clock.Tick(ctx)
 
 	for f, bars := range map[string]int{
-		"hit":     1,
+		"mallet":  1,
+		"drums":   2,
+		"brass":   2,
+		"strings": 8,
+		"arp":     2,
 		"bass":    2,
-		"e-piano": 4,
-		"drums":   8,
 	} {
 		cfg := nomidi.TaskConfig{
 			PortName: f,

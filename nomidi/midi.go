@@ -99,21 +99,18 @@ func (p *Player) Play(ctx context.Context) {
 		// this goes to task logs
 		//p.log.Info("playing")
 
-		//err = smf.ReadTracks(file).Do(
-		//	func(te smf.TrackEvent) {
-		//		p.log.Info("te",
-		//			"track", te.TrackNo,
-		//			"msg", te.Message.String(),
-		//		)
-		//	},
-		//).Play(out)
-
 		// this blocks so without a goroutine would produce variable duration between tick reads.
 		// backgrounding this allows the clock to continue ticking appropriately.
 		// TODO: but now this not-blocking means the program can exit without a MIDI NOTE OFF command...
 		go func() {
-			if e := smf.ReadTracks(file).Play(out); e != nil {
-				errCh <- e
+			err = smf.ReadTracks(file).Play(out)
+			//err = smf.ReadTracks(file).Do(
+			//	func(te smf.TrackEvent) {
+			//		log.Printf("port %s: %s; %#v", port, te.Message.String(), te)
+			//	},
+			//).Play(out)
+			if err != nil {
+				errCh <- err
 			}
 		}()
 	}

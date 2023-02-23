@@ -603,8 +603,9 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	handle.clock.Unsubscribe(handle.player)
 	if err := DeleteClock(handle.clock.Name); err != nil {
 		handle.logger.Warn("couldn't delete clock", "err", err, "id", taskID)
+	} else {
+		handle.logger.Info("done deleting clock", "id", taskID)
 	}
-	handle.logger.Info("done deleting clock", "id", taskID)
 
 	return nil
 }

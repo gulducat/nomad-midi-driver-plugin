@@ -5,6 +5,7 @@ default: nomad example
 
 kill:
 	pkill nomad || true
+	ps aux | grep -E 'nomad|midi' | grep -v grep || true
 
 nomad: kill build
 	nomad agent -dev -config=./example/agent.hcl | grep -i midi &

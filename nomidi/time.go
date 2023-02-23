@@ -22,8 +22,8 @@ type Clock struct {
 }
 
 func NewClock(name string) *Clock {
-	bpm := 125 // TODO
-	log.Println("BPM IS ALWAYS 125!")
+	bpm := 120 // TODO
+	log.Printf("BPM IS ALWAYS %d!", bpm)
 	dur := time.Duration(bpm)
 	dur = 60 * time.Second / dur * 4 // TODO: time better?  this is one bar
 	c := &Clock{
