@@ -2,20 +2,19 @@ package nomidi
 
 import (
 	"context"
-	"errors"
 	"github.com/hashicorp/go-hclog"
 	midi "gitlab.com/gomidi/midi/v2"
 	"gitlab.com/gomidi/midi/v2/smf"
-	"log"
+	"path"
+	"sync"
 )
 
 func NewPlayer(logger hclog.Logger, cfg TaskConfig) *Player {
 	p := &Player{
 		Cfg:   cfg,
-		Tick:  make(chan struct{}),
+		Tick:  make(chan struct{}, 1),
 		Done:  make(chan struct{}),
 		errCh: make(chan error, 1),
-		err:   errors.New("midi not done yet"),
 		log:   logger,
 	}
 	return p
@@ -31,6 +30,7 @@ type Player struct {
 }
 
 func (p *Player) Wait(ctx context.Context) error {
+	p.log.Debug("waiting")
 	var err error
 	select {
 	case <-p.Done:
@@ -38,6 +38,7 @@ func (p *Player) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 		err = ctx.Err()
 	}
+	p.log.Debug("done waiting", "err", err)
 	return err
 }
 
@@ -51,22 +52,30 @@ func (p *Player) Err() error {
 }
 
 func (p *Player) Play(ctx context.Context) {
-	defer close(p.Done)
-
 	port := p.Cfg.PortName
-	file := p.Cfg.MidiFile
+	file := path.Join(pluginDir, p.Cfg.MidiFile)
 	bars := p.Cfg.Bars
 
+	// connect first
 	out, err := midi.FindOutPort(port)
 	if err != nil {
 		p.errCh <- err
 		return
 	}
-	p.log.Info("found port", "out", out)
+	p.log.Info("found out port", "port", out)
+	// close last
 	defer func() {
 		if err := out.Close(); err != nil {
-			log.Printf("err closing out port %s: %s", out, err)
+			p.log.Error("error closing out port", "port", port, "err", err)
 		}
+		p.log.Info("port closed", "port", port)
+	}()
+
+	// silly dance to ensure the midi file finishes before we call the player done
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+		close(p.Done)
 	}()
 
 	errCh := make(chan error, 1)
@@ -74,13 +83,15 @@ func (p *Player) Play(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			p.errCh <- ctx.Err() // is this an error for me, really?
+			// p.errCh <- ctx.Err() // is this an error for me, really?
 			// this one is for operators, not job authors, so log instead of logger
-			log.Printf("ctx done, so i (%s) am done too: %s", port, ctx.Err())
+			//log.Printf("ctx done, so i (%s) am done too: %s", port, ctx.Err())
+			p.log.Info("ctx done, so i am done too", "port", port)
 			return
 		case e := <-errCh:
 			p.errCh <- e
-			log.Printf("error in player: %s", e)
+			//log.Printf("error in player: %s", e)
+			p.log.Error("player error", "err", e)
 			return
 		case <-p.Tick:
 			// clock says go ahead, once per bar.
@@ -88,21 +99,25 @@ func (p *Player) Play(ctx context.Context) {
 
 		// but we only play if lined up on the right bar count
 		if bar > 1 {
-			log.Printf("bar %d skip: %s", bar, port)
+			//log.Printf("bar %d skip: %s", bar, port)
+			//fmt.Printf("bar %d skip: %s\n", bar, port)
+			p.log.Debug("skipping", "port", port, "bar", bar)
 			bar--
 			continue
 		}
 		bar = bars
 
 		// for easier inspection in nomad agent logs for now
-		log.Printf("bar %d play: %s", bar, port)
+		//fmt.Printf("bar %d play: %s\n", bar, port)
 		// this goes to task logs
 		//p.log.Info("playing")
+		p.log.Info("playing", "port", port, "bar", bar)
 
-		// this blocks so without a goroutine would produce variable duration between tick reads.
+		// ReadTracks() blocks so without a goroutine would produce variable duration between tick reads.
 		// backgrounding this allows the clock to continue ticking appropriately.
-		// TODO: but now this not-blocking means the program can exit without a MIDI NOTE OFF command...
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			err = smf.ReadTracks(file).Play(out)
 			//err = smf.ReadTracks(file).Do(
 			//	func(te smf.TrackEvent) {

@@ -1,29 +1,32 @@
 variable "song" {
+  description = "a clock will coordinate all parts in a song"
   type = string
-  description = "a clock will coordinate all parts in the same song"
   default = "orchestrate me, baby"
 }
 
 variable "part" {
+  description = "{part}.mid + a midi port named {part}"
   type = string
-  description = "examples/{part}.mid and a midi port named {part}"
 }
 
 # weird but ok
 variable "bars" {
+  description = "map of number of bars per part"
   type = map(string)
   default = {
     "mallet": 1,
     "drums": 2,
-    "brass": 2,
+    "brass": 4,
     "strings": 8,
     "arp": 2,
     "bass": 2,
+    "hats": 1,
   }
 }
 
 variable "file_dir" {
-  type = string
   description = "location of .mid files"
-  default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
+  type = string
+  default = "example"
+  #default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
 }

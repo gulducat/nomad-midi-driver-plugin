@@ -1,6 +1,9 @@
 variable "dir" {
   # does this path make you go "hmmmm" ?
-  default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
+  # default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
+  # this gets auto-prefixed with the directory that contains the driver binary
+  # i.e. the nomad plugin_dir
+  default = "example"
 }
 
 job "song" {
@@ -33,7 +36,7 @@ job "song" {
         song = "one"
         midi_file = "${var.dir}/brass.mid"
         port_name = "brass"
-        bars = 2
+        bars = 4
       }
     }
     task "strings" {

@@ -1,7 +1,7 @@
 PLUGIN_BINARY=midi-portmidi
 export GO111MODULE=on
 
-default: nomad example
+default: nomad
 
 kill:
 	pkill nomad || true
@@ -23,3 +23,6 @@ clean: ## Remove build artifacts
 
 build:
 	go build -o ${PLUGIN_BINARY} .
+
+test: build
+	./$(PLUGIN_BINARY) test

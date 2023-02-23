@@ -352,7 +352,7 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 		return nil, nil, fmt.Errorf("task with ID %q already started", cfg.ID)
 	}
 
-	d.logger.Error("HI TASK CONFIG", "cfg", fmt.Sprintf("%#v", cfg))
+	//d.logger.Error("HI TASK CONFIG", "cfg", fmt.Sprintf("%#v", cfg))
 
 	var driverConfig TaskConfig
 	if err := cfg.DecodeDriverConfig(&driverConfig); err != nil {
@@ -415,8 +415,11 @@ func (d *MIDIDriverPlugin) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHand
 	if err != nil {
 		return nil, nil, fmt.Errorf("fifo.OpenWriter err: %w", err)
 	}
-	opts := hclog.DefaultOptions
-	opts.Output = stdout
+	opts := &hclog.LoggerOptions{
+		Output: stdout,
+		Level:  hclog.Debug,
+		TimeFn: time.Now,
+	}
 	logger := hclog.New(opts)
 
 	clock := GetClock(driverConfig.Song)
@@ -595,17 +598,16 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	handle.stopper()
-	handle.logger.Info("did stopper(), Wait()ing...", "id", taskID)
-	handle.player.Wait(ctx)
-	handle.logger.Info("done Wait()ing.", "id", taskID)
-	handle.logger.Info("deleting clock", "id", taskID)
 	handle.clock.Unsubscribe(handle.player)
-	if err := DeleteClock(handle.clock.Name); err != nil {
-		handle.logger.Warn("couldn't delete clock", "err", err, "id", taskID)
-	} else {
-		handle.logger.Info("done deleting clock", "id", taskID)
-	}
+	handle.logger.Debug("unsubscribed")
+	handle.stopper()
+	handle.player.Wait(ctx)
+	//handle.logger.Info("deleting clock", "id", taskID)
+	//if err := DeleteClock(handle.clock.Name); err != nil {
+	//	handle.logger.Warn("couldn't delete clock", "err", err, "id", taskID)
+	//} else {
+	//	handle.logger.Info("done deleting clock", "id", taskID)
+	//}
 
 	return nil
 }
