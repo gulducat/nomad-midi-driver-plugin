@@ -597,7 +597,6 @@ func (d *MIDIDriverPlugin) StopTask(taskID string, timeout time.Duration, signal
 	defer cancel()
 
 	handle.clock.Unsubscribe(handle.player)
-	handle.logger.Debug("unsubscribed")
 	handle.stopper()
 	handle.player.Wait(ctx)
 	//handle.logger.Info("deleting clock", "id", taskID)
@@ -631,6 +630,7 @@ func (d *MIDIDriverPlugin) DestroyTask(taskID string, force bool) error {
 	// (timeout equals 0).
 	select {
 	case <-handle.player.Done:
+		handle.logger.Info("deleting", "id", taskID)
 		d.tasks.Delete(taskID)
 	default:
 		// do i ever hit this?

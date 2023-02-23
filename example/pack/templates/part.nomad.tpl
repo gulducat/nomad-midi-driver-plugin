@@ -1,6 +1,6 @@
 job "[[ .midi.part ]]" {
-  group "g" {
-    task "part" {
+  group "[[ .midi.part ]]" {
+    task "[[ .midi.part ]]" {
       driver = "midi-portmidi"
       config {
         song      = "[[ .midi.song ]]"

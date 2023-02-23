@@ -25,10 +25,10 @@ func NewClock(name string) *Clock {
 	bpm := 120 // TODO
 	log.Printf("BPM IS ALWAYS %d!", bpm)
 	dur := time.Duration(bpm)
-	dur = 60 * time.Second / dur * 4 // TODO: time better?  this is one bar
+	bar := 60 * time.Second / dur * 4 // this is one bar in 4/4 time
 	c := &Clock{
 		Name:   name,
-		ticker: time.NewTicker(dur),
+		ticker: time.NewTicker(bar),
 		subs:   make(map[string]chan struct{}),
 	}
 	clocks.Store(name, c)
