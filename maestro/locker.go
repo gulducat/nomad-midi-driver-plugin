@@ -1,4 +1,4 @@
-package nomidi
+package maestro
 
 import (
 	"sync"

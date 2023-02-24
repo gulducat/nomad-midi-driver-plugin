@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"github.com/gulducat/nomad-midi-driver-plugin/nomidi"
+	"github.com/gulducat/nomad-midi-driver-plugin/maestro"
 	"gitlab.com/gomidi/midi/v2"
 	"log"
 	"os"
@@ -52,18 +52,18 @@ func main() {
 func testSync(ctx context.Context) {
 	/* testing concurrent files, make sure they are sync'd */
 	logger := hclog.Default()
-	var players []*nomidi.Player
+	var players []*maestro.Player
 
-	clock := nomidi.GetClock("cli")
+	clock := maestro.GetClock("cli")
 	go clock.Tick(ctx)
 
 	for f, bars := range parts {
-		cfg := nomidi.TaskConfig{
+		cfg := maestro.TaskConfig{
 			PortName: f,
 			MidiFile: "example/" + f + ".mid",
 			Bars:     bars,
 		}
-		p := nomidi.NewPlayer(logger, cfg)
+		p := maestro.NewPlayer(logger, cfg)
 		clock.Subscribe(p)
 		players = append(players, p)
 		go p.Play(ctx)
@@ -77,8 +77,8 @@ func testSync(ctx context.Context) {
 }
 
 func cli(ctx context.Context, port, file, bars string) {
-	clock := nomidi.GetClock("cli")
-	defer nomidi.DeleteClock("cli")
+	clock := maestro.GetClock("cli")
+	defer maestro.DeleteClock("cli")
 	go clock.Tick(ctx)
 
 	logger := hclog.Default()
@@ -87,12 +87,12 @@ func cli(ctx context.Context, port, file, bars string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := nomidi.TaskConfig{
+	cfg := maestro.TaskConfig{
 		PortName: port,
 		MidiFile: file,
 		Bars:     numBars,
 	}
-	player := nomidi.NewPlayer(logger, cfg)
+	player := maestro.NewPlayer(logger, cfg)
 	clock.Subscribe(player)
 	defer clock.Unsubscribe(player)
 
@@ -105,5 +105,5 @@ func cli(ctx context.Context, port, file, bars string) {
 
 // factory returns a new instance of a nomad driver plugin
 func factory(log hclog.Logger) interface{} {
-	return nomidi.NewPlugin(log)
+	return maestro.NewPlugin(log)
 }
