@@ -21,6 +21,7 @@ variable "bars" {
     "arp": 2,
     "bass": 2,
     "hats": 1,
+    "cat": 8,
   }
 }
 

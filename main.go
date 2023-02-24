@@ -27,6 +27,7 @@ var parts = map[string]int{
 	"arp":     2,
 	"bass":    2,
 	"hats":    1,
+	"cat":     8,
 }
 
 func main() {
