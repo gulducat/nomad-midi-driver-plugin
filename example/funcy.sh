@@ -6,7 +6,6 @@ watch() {
       && msg="$(nomad status)"
     clear
     echo "$msg"
-    printf "\n"
     sleep 1
   done
 }
@@ -26,14 +25,13 @@ run() {
 
 _stop() {
   local job="$1"
-  shift
   if [ $job = all ]; then
     echo 'stopping all jobs'
     nomad status | awk '/running|pending|dead/ {print$1}' \
-      | while read -r j; do nomad stop -detach $* $j; done
+      | while read -r j; do stop $j; done
     return
   fi
-  _exec nomad stop -detach $* $job
+  _exec nomad stop -detach $job
 }
 
 stop() {

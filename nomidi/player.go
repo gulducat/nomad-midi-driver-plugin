@@ -87,14 +87,10 @@ func (p *Player) Play(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// p.errCh <- ctx.Err() // is this an error for me, really?
-			// this one is for operators, not job authors, so log instead of logger
-			//log.Printf("ctx done, so i (%s) am done too: %s", port, ctx.Err())
 			p.log.Info("ctx done, so i am done too", "port", port)
 			return
 		case e := <-errCh:
 			p.errCh <- e
-			//log.Printf("error in player: %s", e)
 			p.log.Error("player error", "err", e)
 			return
 		case <-time.After(time.Second * 10): // 10 is ok? would be down to like 30 bpm
@@ -106,18 +102,12 @@ func (p *Player) Play(ctx context.Context) {
 
 		// but we only play if lined up on the right bar count
 		if bar > 1 {
-			//log.Printf("bar %d skip: %s", bar, port)
-			//fmt.Printf("bar %d skip: %s\n", bar, port)
 			p.log.Debug("skipping", "port", port, "bar", bar)
 			bar--
 			continue
 		}
 		bar = bars
 
-		// for easier inspection in nomad agent logs for now
-		//fmt.Printf("bar %d play: %s\n", bar, port)
-		// this goes to task logs
-		//p.log.Info("playing")
 		p.log.Info("playing", "port", port, "bar", bar)
 
 		// ReadTracks() blocks so without a goroutine would produce variable duration between tick reads.

@@ -8,9 +8,6 @@ job "[[ .midi.part ]]" {
         port_name = "[[ .midi.part ]]"
         bars      = [[ index .midi.bars .midi.part ]]
       }
-      env {
-        LOG_LEVEL = "DEBUG"
-      }
     }
   }
 }

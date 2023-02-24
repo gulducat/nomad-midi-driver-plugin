@@ -117,9 +117,6 @@ func (c *Clock) Tick(ctx context.Context) {
 				case p.Tick <- struct{}{}:
 					//c.logger.Debug("sent to", "port", p.Cfg.PortName)
 				case <-time.After(tickTimeout):
-					// TODO: unsubscribe?  and mark as error'd so nomad can reschedule?  something else is wrong here..
-					// making unsubscribe happen after wait results in this happening only once.
-					//log.Printf("timeout sending Tick to %s", p.Cfg.PortName)
 					c.logger.Warn("timeout sending Tick", "port", p.Cfg.PortName)
 				}
 			}

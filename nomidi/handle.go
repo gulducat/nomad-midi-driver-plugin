@@ -25,7 +25,6 @@ type taskHandle struct {
 	completedAt time.Time
 	exitResult  *drivers.ExitResult
 
-	// TODO: add any extra relevant information about the task.
 	clock   *Clock
 	player  *Player
 	stopper func()
@@ -61,7 +60,6 @@ func (h *taskHandle) run(ctx context.Context) {
 	}
 	h.stateLock.Unlock()
 
-	// TODO: wait for your task to complete and upate its state.
 	h.stateLock.Lock()
 	defer h.stateLock.Unlock()
 	err := h.player.Wait(ctx)
