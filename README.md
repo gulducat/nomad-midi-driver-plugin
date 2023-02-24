@@ -1,62 +1,30 @@
-Nomad Skeleton Driver Plugin
+Maestro
 ==========
 
-Skeleton project for
-[Nomad task driver plugins](https://www.nomadproject.io/docs/drivers/index.html).
+Nomad is actually an orchestrator.
 
-This project is intended for bootstrapping development of a new task driver
-plugin.
+Maestro is A MIDI
+[task driver](https://developer.hashicorp.com/nomad/docs/drivers)
+for HashiCorp Nomad that sends MIDI signals from .mid files
+to music software like Ableton Live.
 
-- Website: [https://www.nomadproject.io](https://www.nomadproject.io)
-- Mailing list: [Google Groups](http://groups.google.com/group/nomad-tool)
+Example demo video for our Nomad team Hack Week available
+[here](https://drive.google.com/file/d/1TAL5d-UpkvrS_IvQNHyDDgLZJGdAfAOS/view?usp=sharing)!
 
 Requirements
 -------------------
 
 - [Go](https://golang.org/doc/install) v1.18 or later (to compile the plugin)
 - [Nomad](https://www.nomadproject.io/downloads.html) v0.9+ (to run the plugin)
+- MacOS (maybe it works on windows, idk)
+- [portmidi](https://github.com/PortMidi/portmidi) C lib to play the MIDI
+  (`brew install portmidi`)
+- [Virtual MIDI ports](https://help.ableton.com/hc/en-us/articles/209774225-Setting-up-a-virtual-MIDI-bus)
+- Some music software (e.g. Ableton Live)
+- [gomidi/midi](https://github.com/gomidi/midi) has some neat tools available too.
 
-Building the Skeleton Plugin
+Building the Plugin
 -------------------
-
-[Generate](https://github.com/hashicorp/nomad-skeleton-driver-plugin/generate)
-a new repository in your account from this template by clicking the `Use this
-template` button above.
-
-Clone the repository somewhere in your computer. This project uses
-[Go modules](https://blog.golang.org/using-go-modules) so you will need to set
-the environment variable `GO111MODULE=on` or work outside your `GOPATH` if it
-is set to `auto` or not declared.
-
-```sh
-$ git clone git@github.com:<ORG>/<REPO>git
-```
-
-Enter the plugin directory and update the paths in `go.mod` and `main.go` to
-match your repository path.
-
-```diff
-// go.mod
-
-- module github.com/hashicorp/nomad-skeleton-driver-plugin
-+ module github.com/<ORG>/<REPO>
-...
-```
-
-```diff
-// main.go
-
-package main
-
-import (
-    log "github.com/hashicorp/go-hclog"
--   "github.com/hashicorp/nomad-skeleton-driver-plugin/hello"
-+.  "github.com/<REPO>/<ORG>/hello"
-...
-
-```
-
-Build the skeleton plugin.
 
 ```sh
 $ make build
@@ -64,21 +32,34 @@ $ make build
 
 ## Deploying Driver Plugins in Nomad
 
-The initial version of the skeleton is a simple task that outputs a greeting.
-You can try it out by starting a Nomad agent and running the job provided in
-the `example` folder:
+Start Nomad with the example agent config and set the plugin dir to where the binary is.
+
+`make build` puts it in the current directory.
 
 ```sh
-$ make build
 $ nomad agent -dev -config=./example/agent.hcl -plugin-dir=$(pwd)
-
-# in another shell
-$ nomad run ./example/example.nomad
-$ nomad logs <ALLOCATION ID>
 ```
 
-Code Organization
--------------------
-Follow the comments marked with a `TODO` tag to implement your driver's logic.
-For more information check the
-[Nomad documentation on plugins](https://www.nomadproject.io/docs/internals/plugins/index.html).
+## Configuring your machine
+
+In my setup, each musical "part" needs these things:
+
+- MIDI file
+- [virtual MIDI port](https://help.ableton.com/hc/en-us/articles/209774225-Setting-up-a-virtual-MIDI-bus)
+- track in your music software DAW that listens on that port
+  (and be sure the track is armed)
+- task in a job with the `"midi-portmidi"` driver (see `example/example.nomad.hcl`)
+  that connects all these things together.
+
+I export my `.mid` files from Ableton, which only does single-channel files, hence all the separate ports.
+You can generate them differently and take advantage of channels on one port, if you can work that out.
+
+## Running tasks
+
+Have a look in `example/` for various examples or whatever.
+
+`source example/funcy.sh` for some helpful functions to `run` or `stop` different parts.
+
+I'm pretty tired at the end of Hack Week, so I'm just gonna leave this here.
+
+Good luck!

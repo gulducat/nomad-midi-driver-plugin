@@ -4,7 +4,7 @@ export GO111MODULE=on
 default: nomad
 
 nomad: kill build
-	nomad agent -dev -config=./example/agent.hcl | grep -i midi &
+	nomad agent -dev -config=./example/agent.hcl -plugin-dir=$(PWD) | grep -i midi &
 
 reset:
 	nomad status | awk '/service/ {print$$1}' | xargs -P1 nomad stop -purge -detach
