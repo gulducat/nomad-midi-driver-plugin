@@ -64,6 +64,7 @@ func (p *Player) Play(ctx context.Context) {
 	out, err := midi.FindOutPort(port)
 	if err != nil {
 		p.errCh <- err
+		close(p.Done)
 		return
 	}
 	p.log.Info("found out port", "port", out)
