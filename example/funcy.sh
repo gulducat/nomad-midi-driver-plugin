@@ -27,7 +27,7 @@ _stop() {
   local job="$1"
   if [ $job = all ]; then
     echo 'stopping all jobs'
-    nomad status | awk '/running|pending|dead/ {print$1}' \
+    nomad status | awk '/service.*(running|pending)/ {print$1}' \
       | while read -r j; do stop $j; done
     return
   fi
@@ -37,3 +37,4 @@ _stop() {
 stop() {
   for part in $*; do _stop $part; done
 }
+
