@@ -28,5 +28,4 @@ variable "file_dir" {
   description = "location of .mid files"
   type = string
   default = "example"
-  #default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
 }

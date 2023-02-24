@@ -1,6 +1,4 @@
 variable "dir" {
-  # does this path make you go "hmmmm" ?
-  # default = "/Users/danielbennett/git/gulducat/nomad-midi-driver-plugin/example"
   # this gets auto-prefixed with the directory that contains the driver binary
   # i.e. the nomad plugin_dir
   default = "example"
