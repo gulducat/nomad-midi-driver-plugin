@@ -4,8 +4,8 @@ job "[[ .midi.part ]]" {
       driver = "midi-portmidi"
       config {
         song      = "[[ .midi.song ]]"
-        midi_file = "[[ .midi.file_dir ]]/[[ .midi.part ]].mid"
         port_name = "[[ .midi.part ]]"
+        midi_file = "[[ .midi.file_dir ]]/[[ .midi.part ]].mid"
         bars      = [[ index .midi.bars .midi.part ]]
       }
     }

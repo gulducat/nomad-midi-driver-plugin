@@ -11,8 +11,9 @@ watch() {
 }
 
 _exec() {
+  #echo $(date +'%H:%M:%S') "++ $*"
   echo "++ $*"
-  eval "$*"
+  eval "$*" | grep -vE 'deployed' &
 }
 
 _run (){
@@ -20,6 +21,8 @@ _run (){
 }
 
 run() {
+  #echo "$(date +'%H:%M:%S') run $*" >> cmd.log
+  echo "+ run $*"
   for part in $*; do _run $part; done
 }
 
@@ -28,13 +31,15 @@ _stop() {
   if [ $job = all ]; then
     echo 'stopping all jobs'
     nomad status | awk '/service.*(running|pending)/ {print$1}' \
-      | while read -r j; do stop $j; done
+      | while read -r j; do _stop $j; done
     return
   fi
   _exec nomad stop -detach $job
 }
 
 stop() {
+  #echo "$(date +'%H:%M:%S') stop $*" >> cmd.log
+  echo "+ stop $*"
   for part in $*; do _stop $part; done
 }
 
